@@ -15,7 +15,7 @@
     <div class="info">
         <b style="color: #00d4ff;">E2V1 Daylight Map by Civilian</b><br>
         • Earth2.fi<br>
-        • Click to see E2V1 time and sun status
+        • Click to see E2V1 local time and sun status
     </div>
     <div id="map"></div>
 
@@ -46,7 +46,7 @@
             return (23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81))) * Math.PI / 180;
         }
 
-        // --- KORJATTU FUNKTIO ---
+        // Lasketaan aurinkoajat paikallisessa ajassa (UTC + Offset)
         function calculateSunTimes(lat, lon) {
             const latRad = lat * Math.PI / 180;
             const decl = getSolarDeclination();
@@ -59,22 +59,17 @@
             const solarNoonUTC = 12 - (lon / 15);
             const zoneOffset = Math.floor((lon + 7.5) / 15);
 
-            // Muunnetaan UTC-tunnit E2V1-ajaksi (sama logiikka kuin kellossa)
-            const formatE2V1 = (hUTC) => {
-                const totalSecondsUTC = hUTC * 3600;
-                // Lisätään aikavyöhyke ja kerrotaan neljällä
-                const e2v1Seconds = (totalSecondsUTC + (zoneOffset * 3600)) * 4;
-                // Modulo 86400 varmistaa että aika pysyy 00:00-23:59 välillä
-                const dailySeconds = ((e2v1Seconds % 86400) + 86400) % 86400;
-                
-                const h = Math.floor(dailySeconds / 3600).toString().padStart(2,'0');
-                const m = Math.floor((dailySeconds % 3600) / 60).toString().padStart(2,'0');
+            const formatLocal = (hUTC) => {
+                // Lisätään vain aikavyöhyke (esim +2), ei kerrota vielä tässä neljällä
+                const localHours = (hUTC + zoneOffset + 24) % 24;
+                const h = Math.floor(localHours).toString().padStart(2, '0');
+                const m = Math.floor((localHours % 1) * 60).toString().padStart(2, '0');
                 return `${h}:${m}`;
             };
 
             return { 
-                rise: formatE2V1(solarNoonUTC - H), 
-                set: formatE2V1(solarNoonUTC + H) 
+                rise: formatLocal(solarNoonUTC - H), 
+                set: formatLocal(solarNoonUTC + H) 
             };
         }
 
@@ -106,13 +101,14 @@
 
         map.on('click', function(e) {
             const { lat, lng } = e.latlng;
-            
+            const sun = calculateSunTimes(lat, lng);
+            const zoneOffset = Math.floor((lng + 7.5) / 15); 
+
             const updatePopup = () => {
                 const now = new Date();
-                const sun = calculateSunTimes(lat, lng); // Lasketaan uusilla säännöillä
-                const zoneOffset = Math.floor((lng + 7.5) / 15); 
                 const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
                 
+                // KELTAINEN KELLO: (UTC + aikavyöhyke) * 4
                 const e2v1Total = ((utcSecs + (zoneOffset * 3600)) * 4) % 86400;
                 const h = Math.floor(e2v1Total / 3600).toString().padStart(2,'0');
                 const m = Math.floor((e2v1Total % 3600) / 60).toString().padStart(2,'0');
@@ -122,12 +118,15 @@
                     <div style="background: #1a1a1a; color: white; padding: 15px; font-family: sans-serif; border-radius: 8px; border: 1px solid #333; min-width: 220px;">
                         <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 14px; text-transform: uppercase;">Zone UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
                         <div style="background: #252525; padding: 12px; border-radius: 6px; border-left: 4px solid #ffcc00; margin: 10px 0;">
-                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase;">E2V1 Current Time:</span><br>
+                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase;">E2V1 Local Time:</span><br>
                             <span style="font-size: 32px; font-weight: bold; color: #ffcc00;">${h}:${m}:${s}</span>
                         </div>
                         <div style="font-size: 13px; line-height: 1.6;">
                             🌅 <b>Sunrise:</b> ${sun.rise}<br>
                             🌇 <b>Sunset:</b> ${sun.set}
+                        </div>
+                        <div style="font-size: 10px; color: #666; margin-top: 5px; border-top: 1px solid #333; padding-top: 5px;">
+                            * Sun times in local 24h format
                         </div>
                     </div>
                 `);
