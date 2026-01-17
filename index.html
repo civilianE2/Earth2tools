@@ -88,43 +88,45 @@
             drawLayer(-12, '#000', 0.45);
         }
 
-        map.on('click', function(e) {
+      map.on('click', function(e) {
             const { lat, lng } = e.latlng;
             const sun = calculateSunTimes(lat, lng);
-            const now = new Date();
-            const zoneOffset = -(now.getTimezoneOffset() / 60);
-            const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
             
-            const e2v1Total = ((utcSecs + (zoneOffset * 3600)) * 4) % 86400;
-            const e2h = Math.floor(e2v1Total / 3600).toString().padStart(2,'0');
-            const e2m = Math.floor((e2v1Total % 3600) / 60).toString().padStart(2,'0');
+            const updatePopup = () => {
+                const now = new Date();
+                // Lasketaan vyöhyke pituusasteen mukaan (15 astetta = 1 tunti)
+                const zoneOffset = Math.floor((lng + 7.5) / 15); 
+                const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
+                
+                // E2V1 aika: (UTC + vyöhyke) * 4
+                const e2v1Total = ((utcSecs + (zoneOffset * 3600)) * 4) % 86400;
+                const h = Math.floor(e2v1Total / 3600).toString().padStart(2,'0');
+                const m = Math.floor((e2v1Total % 3600) / 60).toString().padStart(2,'0');
+                const s = Math.floor(e2v1Total % 60).toString().padStart(2,'0');
 
-            L.popup({ minWidth: 260 })
-                .setLatLng(e.latlng)
-                .setContent(`
-                    <div style="background: #1a1a1a; color: white; padding: 15px; font-family: sans-serif; border-radius: 8px; border: 1px solid #333;">
-                        <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 18px; text-transform: uppercase;">Sijaintitiedot</h2>
-                        <div style="border-bottom: 1px solid #333; margin-bottom: 15px;"></div>
-                        <div style="margin-bottom: 15px;">
-                            <span style="font-size: 11px; color: #888; text-transform: uppercase;">Koordinaatit:</span><br>
-                            <span style="font-size: 15px;">${lat.toFixed(4)}°, ${lng.toFixed(4)}°</span>
+                popup.setContent(`
+                    <div style="background: #1a1a1a; color: white; padding: 15px; font-family: sans-serif; border-radius: 8px; border: 1px solid #333; min-width: 220px;">
+                        <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 14px; text-transform: uppercase;">Vyöhyke UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
+                        <div style="background: #252525; padding: 12px; border-radius: 6px; border-left: 4px solid #ffcc00; margin: 10px 0;">
+                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase;">E2V1 Kellonaika:</span><br>
+                            <span style="font-size: 32px; font-weight: bold; color: #ffcc00;">${h}:${m}:${s}</span>
                         </div>
-                        <div style="background: #252525; padding: 15px; border-radius: 6px; border-left: 4px solid #ffcc00; margin-bottom: 20px;">
-                            <span style="font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: bold;">E2V1 Kellonaika:</span><br>
-                            <span style="font-size: 36px; font-weight: bold; color: #ffcc00; line-height: 1.2;">${e2h}:${e2m}</span>
-                        </div>
-                        <div style="font-size: 14px; margin-bottom: 10px; display: flex; align-items: center;">
-                            <span style="font-size: 20px; margin-right: 12px;">🌅</span> <b>Nousu:</b> <span style="margin-left: auto;">${sun.rise}</span>
-                        </div>
-                        <div style="font-size: 14px; display: flex; align-items: center;">
-                            <span style="font-size: 20px; margin-right: 12px;">🌇</span> <b>Lasku:</b> <span style="margin-left: auto;">${sun.set}</span>
-                        </div>
-                        <div style="border-top: 1px solid #333; padding-top: 8px; margin-top: 15px; font-size: 11px; color: #555; text-align: right;">
-                            E2V1 Global Seasonal Engine
+                        <div style="font-size: 13px; line-height: 1.6;">
+                            🌅 <b>Nousu:</b> ${sun.rise} UTC<br>
+                            🌇 <b>Lasku:</b> ${sun.set} UTC
                         </div>
                     </div>
-                `)
+                `);
+            };
+
+            const popup = L.popup({ minWidth: 250 })
+                .setLatLng(e.latlng)
                 .openOn(map);
+            
+            // Päivitetään kelloa 250ms välein (koska kello juoksee 4x nopeudella)
+            const timer = setInterval(updatePopup, 250);
+            map.on('popupclose', () => clearInterval(timer));
+            updatePopup();
         });
 
         setInterval(updateShadows, 10000);
@@ -132,3 +134,4 @@
     </script>
 </body>
 </html>
+
