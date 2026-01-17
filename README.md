@@ -15,6 +15,10 @@ The visualizer calculates the **Solar Terminator** (the line between day and nig
 ### Credits & Inspiration
 The core logic and temporal acceleration are inspired by **Eugene Boondock** and the **Earthie** project.
 * **Official Website:** [https://www.earthie.world/](https://www.earthie.world/)
+* Special thanks to Kraganov and the Earth2 Portal project:
+* * **Official Website:** [https://earth2portal.net/](https://earth2portal.net/)/)
+* 
+* 
 
 ---
 
