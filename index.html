@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>E2V1 Daylight Map by Civilian — Earth2.fi</title>
+    <title>E2V1 Daytime Visualizer by Civilian Earth2.fi</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         #map { height: 100vh; width: 100%; background: #00050a; cursor: crosshair; }
@@ -15,7 +15,7 @@
     <div class="info">
         <b style="color: #00d4ff;">E2V1 Daylight Map by Civilian</b><br>
         • Earth2.fi<br>
-        • Click to view E2V1 time and the sun
+        • Click to see E2V1 time and sun status
     </div>
     <div id="map"></div>
 
@@ -46,19 +46,36 @@
             return (23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81))) * Math.PI / 180;
         }
 
+        // --- KORJATTU FUNKTIO ---
         function calculateSunTimes(lat, lon) {
             const latRad = lat * Math.PI / 180;
             const decl = getSolarDeclination();
             const cosH = (Math.sin(-0.833 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+            
             if (cosH > 1) return { rise: "Polar Night", set: "Polar Night" };
             if (cosH < -1) return { rise: "Midnight Sun", set: "Midnight Sun" };
+            
             const H = Math.acos(cosH) * (180 / Math.PI) / 15;
-            const solarNoon = 12 - (lon / 15);
-            const format = (h) => {
-                const totalM = (h * 60 + 1440) % 1440;
-                return `${Math.floor(totalM/60).toString().padStart(2,'0')}:${Math.floor(totalM%60).toString().padStart(2,'0')}`;
+            const solarNoonUTC = 12 - (lon / 15);
+            const zoneOffset = Math.floor((lon + 7.5) / 15);
+
+            // Muunnetaan UTC-tunnit E2V1-ajaksi (sama logiikka kuin kellossa)
+            const formatE2V1 = (hUTC) => {
+                const totalSecondsUTC = hUTC * 3600;
+                // Lisätään aikavyöhyke ja kerrotaan neljällä
+                const e2v1Seconds = (totalSecondsUTC + (zoneOffset * 3600)) * 4;
+                // Modulo 86400 varmistaa että aika pysyy 00:00-23:59 välillä
+                const dailySeconds = ((e2v1Seconds % 86400) + 86400) % 86400;
+                
+                const h = Math.floor(dailySeconds / 3600).toString().padStart(2,'0');
+                const m = Math.floor((dailySeconds % 3600) / 60).toString().padStart(2,'0');
+                return `${h}:${m}`;
             };
-            return { rise: format(solarNoon - H), set: format(solarNoon + H) };
+
+            return { 
+                rise: formatE2V1(solarNoonUTC - H), 
+                set: formatE2V1(solarNoonUTC + H) 
+            };
         }
 
         function updateShadows() {
@@ -72,7 +89,6 @@
                     for (let lat = 85; lat >= -85; lat -= 3) {
                         const latRad = lat * Math.PI / 180;
                         const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
-                        // IMPORTANT FIX: Added Math.PI
                         const hourAngle = (((((utcSecs + (lon/15)*3600)*4)%86400)/86400)*360-180)*Math.PI/180;
                         const alt = Math.asin(Math.sin(latRad)*Math.sin(decl) + Math.cos(latRad)*Math.cos(decl)*Math.cos(hourAngle)) * (180/Math.PI);
                         if (alt < limit) points.push([lat, lon]);
@@ -88,31 +104,15 @@
             drawLayer(-12, '#000', 0.45);
         }
 
-map.on('click', function(e) {
+        map.on('click', function(e) {
             const { lat, lng } = e.latlng;
-            const sunUTC = calculateSunTimes(lat, lng);
             
             const updatePopup = () => {
                 const now = new Date();
+                const sun = calculateSunTimes(lat, lng); // Lasketaan uusilla säännöillä
                 const zoneOffset = Math.floor((lng + 7.5) / 15); 
                 const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
                 
-                // --- APUFUNKTIO: Muuttaa UTC-ajan (HH:MM) E2V1-ajaksi ---
-                const toE2V1 = (utcStr) => {
-                    if (utcStr.includes("Kaamos") || utcStr.includes("yö")) return utcStr;
-                    const [h, m] = utcStr.split(':').map(Number);
-                    const totalSecs = (h * 3600) + (m * 60);
-                    // Lasketaan E2V1: (Aika + Vyöhyke) * 4
-                    const e2Total = ((totalSecs + (zoneOffset * 3600)) * 4) % 86400;
-                    const resH = Math.floor(e2Total / 3600).toString().padStart(2,'0');
-                    const resM = Math.floor((e2Total % 3600) / 60).toString().padStart(2,'0');
-                    return `${resH}:${resM}`;
-                };
-
-                const e2Rise = toE2V1(sunUTC.rise);
-                const e2Set = toE2V1(sunUTC.set);
-
-                // Nykyinen E2V1 kellonaika
                 const e2v1Total = ((utcSecs + (zoneOffset * 3600)) * 4) % 86400;
                 const h = Math.floor(e2v1Total / 3600).toString().padStart(2,'0');
                 const m = Math.floor((e2v1Total % 3600) / 60).toString().padStart(2,'0');
@@ -120,14 +120,14 @@ map.on('click', function(e) {
 
                 popup.setContent(`
                     <div style="background: #1a1a1a; color: white; padding: 15px; font-family: sans-serif; border-radius: 8px; border: 1px solid #333; min-width: 220px;">
-                        <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 14px; text-transform: uppercase;">Vyöhyke UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
+                        <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 14px; text-transform: uppercase;">Zone UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
                         <div style="background: #252525; padding: 12px; border-radius: 6px; border-left: 4px solid #ffcc00; margin: 10px 0;">
-                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase;">E2V1 Kellonaika:</span><br>
+                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase;">E2V1 Current Time:</span><br>
                             <span style="font-size: 32px; font-weight: bold; color: #ffcc00;">${h}:${m}:${s}</span>
                         </div>
                         <div style="font-size: 13px; line-height: 1.6;">
-                            🌅 <b>E2V1 Nousu:</b> <span style="float: right; color: #00d4ff;">${e2Rise}</span><br>
-                            🌇 <b>E2V1 Lasku:</b> <span style="float: right; color: #00d4ff;">${e2Set}</span>
+                            🌅 <b>Sunrise:</b> ${sun.rise}<br>
+                            🌇 <b>Sunset:</b> ${sun.set}
                         </div>
                     </div>
                 `);
@@ -141,6 +141,7 @@ map.on('click', function(e) {
             map.on('popupclose', () => clearInterval(timer));
             updatePopup();
         });
+
         setInterval(updateShadows, 10000);
         updateShadows();
     </script>
