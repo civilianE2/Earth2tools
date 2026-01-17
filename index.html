@@ -88,32 +88,55 @@
             drawLayer(-12, '#000', 0.45);
         }
 
-      map.on('click', function(e) {
+     map.on('click', function(e) {
             const { lat, lng } = e.latlng;
-            const sun = calculateSunTimes(lat, lng);
+            const sunUTC = calculateSunTimes(lat, lng);
             
             const updatePopup = () => {
                 const now = new Date();
-                // Calculate timezone from longitude (15 degrees = 1 hour)
                 const zoneOffset = Math.floor((lng + 7.5) / 15); 
                 const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
                 
-                // E2V1 time: (UTC + zone) * 4
-                const e2v1Total = ((utcSecs + (zoneOffset * 3600)) * 4) % 86400;
-                const h = Math.floor(e2v1Total / 3600).toString().padStart(2,'0');
-                const m = Math.floor((e2v1Total % 3600) / 60).toString().padStart(2,'0');
-                const s = Math.floor(e2v1Total % 60).toString().padStart(2,'0');
+                // --- APUFUNKTIO: Muuttaa tavallisen UTC-ajan (HH:MM) E2V1-ajaksi ---
+                const convertToE2V1 = (utcStr) => {
+                    if (utcStr.includes("Polar") || utcStr.includes("Midnight")) return utcStr;
+                    const [h, m] = utcStr.split(':').map(Number);
+                    const totalSecs = (h * 3600) + (m * 60);
+                    // Lasketaan E2V1: (Aika + Vyöhyke) * 4
+                    const e2Total = ((totalSecs + (zoneOffset * 3600)) * 4) % 86400;
+                    const resH = Math.floor(e2Total / 3600).toString().padStart(2,'0');
+                    const resM = Math.floor((e2Total % 3600) / 60).toString().padStart(2,'0');
+                    return `${resH}:${resM}`;
+                };
+
+                const e2v1Rise = convertToE2V1(sunUTC.rise);
+                const e2v1Set = convertToE2V1(sunUTC.set);
+
+                // Nykyinen E2V1 kello
+                const e2v1NowTotal = ((utcSecs + (zoneOffset * 3600)) * 4) % 86400;
+                const h = Math.floor(e2v1NowTotal / 3600).toString().padStart(2,'0');
+                const m = Math.floor((e2v1NowTotal % 3600) / 60).toString().padStart(2,'0');
+                const s = Math.floor(e2v1NowTotal % 60).toString().padStart(2,'0');
 
                 popup.setContent(`
                     <div style="background: #1a1a1a; color: white; padding: 15px; font-family: sans-serif; border-radius: 8px; border: 1px solid #333; min-width: 220px;">
-                        <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 14px; text-transform: uppercase;">Timezone UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
+                        <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 13px; text-transform: uppercase;">Zone UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
                         <div style="background: #252525; padding: 12px; border-radius: 6px; border-left: 4px solid #ffcc00; margin: 10px 0;">
-                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase;">E2V1 Time:</span><br>
+                            <span style="font-size: 10px; color: #aaa; text-transform: uppercase; font-weight: bold;">E2V1 Local Time:</span><br>
                             <span style="font-size: 32px; font-weight: bold; color: #ffcc00;">${h}:${m}:${s}</span>
                         </div>
-                        <div style="font-size: 13px; line-height: 1.6;">
-                            🌅 <b>Rise:</b> ${sun.rise} UTC<br>
-                            🌇 <b>Set:</b> ${sun.set} UTC
+                        <div style="font-size: 13px; line-height: 1.8;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>🌅 <b>E2V1 Rise:</b></span> 
+                                <span style="color: #00d4ff;">${e2v1Rise}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>🌇 <b>E2V1 Set:</b></span> 
+                                <span style="color: #00d4ff;">${e2v1Set}</span>
+                            </div>
+                        </div>
+                        <div style="border-top: 1px solid #333; margin-top: 10px; padding-top: 5px; font-size: 10px; color: #555; text-align: center;">
+                            E2V1 Seasonal Engine v1.0
                         </div>
                     </div>
                 `);
@@ -123,12 +146,10 @@
                 .setLatLng(e.latlng)
                 .openOn(map);
             
-            // Update the clock every 250ms (because the clock runs 4x speed)
             const timer = setInterval(updatePopup, 250);
             map.on('popupclose', () => clearInterval(timer));
             updatePopup();
         });
-
         setInterval(updateShadows, 10000);
         updateShadows();
     </script>
