@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>E2V1 Daytime Visualizer by Civilian Earth2.fi</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 100vh; width: 100%; background: #00050a; cursor: crosshair; }
+        body { margin: 0; background: #111; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        .info { position: absolute; top: 10px; left: 50px; z-index: 1000; background: rgba(0,0,0,0.85); padding: 15px; border-radius: 8px; border: 1px solid #00d4ff; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <b style="color: #00d4ff;">E2V1 timezones by Civilian</b><br>
+        • Earth2.fi<br>
+        • Klikkaa nähdäksesi nousu/laskuajat
+    </div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- KARTAN LUKITUSLOGIIKKA ---
+        const corner1 = L.latLng(-85, -180);
+        const corner2 = L.latLng(85, 180);
+        const bounds = L.latLngBounds(corner1, corner2);
+
+        const map = L.map('map', {
+            maxBounds: bounds,          // Lukitsee liikkeen näihin rajoihin
+            maxBoundsViscosity: 1.0,    // Tekee reunoista "kovat" (ei kuminauhaefektiä)
+            minZoom: 2,                 // Estää loitontamasta liikaa
+            worldCopyJump: false        // Estää kopioitumisen
+        }).setView([20, 0], 3);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            noWrap: true,               // Estää tiilien toistumisen sivusuunnassa
+            bounds: bounds              // Rajoittaa latausalueen
+        }).addTo(map);
+
+        const shadowGroup = L.layerGroup().addTo(map);
+
+        // --- AURINKOMATEMATIIKKA ---
+        function getSolarDeclination() {
+            const now = new Date();
+            const start = new Date(now.getFullYear(), 0, 0);
+            const dayOfYear = Math.floor((now - start) / 86400000);
+            return (23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81))) * Math.PI / 180;
+        }
+
+        function calculateSunTimes(lat, lon) {
+            const latRad = lat * Math.PI / 180;
+            const decl = getSolarDeclination();
+            const cosH = (Math.sin(-0.833 * Math.PI / 180) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+            
+            if (cosH > 1) return { rise: "Kaamos", set: "Kaamos" };
+            if (cosH < -1) return { rise: "Yötön yö", set: "Yötön yö" };
+            
+            const H = Math.acos(cosH) * (180 / Math.PI) / 15;
+            const solarNoon = 12 - (lon / 15);
+            const format = (h) => {
+                const totalM = (h * 60 + 1440) % 1440;
+                return `${Math.floor(totalM/60).toString().padStart(2,'0')}:${Math.floor(totalM%60).toString().padStart(2,'0')} UTC`;
+            };
+            return { rise: format(solarNoon - H), set: format(solarNoon + H) };
+        }
+
+        // --- VARJOJEN PIIRTO (Curvature-asetuksilla) ---
+        function updateShadows() {
+            shadowGroup.clearLayers();
+            const decl = getSolarDeclination();
+            const now = new Date();
+
+            const drawLayer = (limit, color, opacity) => {
+                // Tiheä askellus takaa täydellisen kaarevuuden
+                for (let lon = -180; lon < 180; lon += 1.2) {
+                    let points = [];
+                    for (let lat = 85; lat >= -85; lat -= 2.5) {
+                        const latRad = lat * Math.PI / 180;
+                        const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
+                        const hourAngle = (((((utcSecs + (lon/15)*3600)*4)%86400)/86400)*360-180)*Math.PI/180;
+                        const alt = Math.asin(Math.sin(latRad)*Math.sin(decl) + Math.cos(latRad)*Math.cos(decl)*Math.cos(hourAngle)) * (180/Math.PI);
+                        if (alt < limit) points.push([lat, lon]);
+                    }
+                    if (points.length > 0) {
+                        L.polygon(points.concat(points.map(p => [p[0], p[1] + 1.2]).reverse()), {
+                            fillColor: color, fillOpacity: opacity, stroke: false, interactive: false
+                        }).addTo(shadowGroup);
+                    }
+                }
+            }
+            drawLayer(0, '#000', 0.25);  // Hämärä
+            drawLayer(-12, '#000', 0.45); // Yö
+        }
+
+      // --- INTERAKTIIVINEN KLIKKAUS (KORJATTU) ---
+        map.on('click', function(e) {
+            const { lat, lng } = e.latlng;
+            
+            // Tarkistetaan rajat
+            if (lng < -180 || lng > 180) return;
+
+            const sun = calculateSunTimes(lat, lng);
+            const now = new Date();
+            const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
+            
+            // E2V1 Ajan laskenta
+            const e2v1Total = ((utcSecs + (lng / 15) * 3600) * 4) % 86400;
+            const e2h = Math.floor(e2v1Total / 3600).toString().padStart(2,'0');
+            const e2m = Math.floor((e2v1Total % 3600) / 60).toString().padStart(2,'0');
+
+            // Luodaan popup vahvalla tyylimäärityksellä
+            L.popup({ 
+                minWidth: 220, 
+                maxWidth: 300,
+                autoPan: true,
+                className: 'custom-popup' 
+            })
+                .setLatLng(e.latlng)
+                .setContent(`
+                    <div style="background: #1a1a1a; color: white; padding: 10px; border-radius: 4px;">
+                        <h3 style="margin: 0 0 10px 0; color: #00d4ff; font-size: 16px; border-bottom: 1px solid #333;">SIJAINTITIEDOT</h3>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <span style="font-size: 11px; color: #aaa; text-transform: uppercase;">Koordinaatit:</span><br>
+                            <span style="font-size: 13px;">${lat.toFixed(4)}°, ${lng.toFixed(4)}°</span>
+                        </div>
+
+                        <div style="margin-bottom: 15px; background: #222; padding: 8px; border-radius: 4px; border-left: 3px solid #ffcc00;">
+                            <span style="font-size: 11px; color: #aaa; text-transform: uppercase;">E2V1 Kellonaika:</span><br>
+                            <span style="font-size: 24px; font-weight: bold; color: #ffcc00;">${e2h}:${e2m}</span>
+                        </div>
+
+                        <div style="font-size: 13px; line-height: 1.8;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                🌅 <b>Nousu:</b> <span style="margin-left: auto;">${sun.rise}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                🌇 <b>Lasku:</b> <span style="margin-left: auto;">${sun.set}</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 15px; font-size: 10px; color: #666; text-align: right; border-top: 1px solid #333; padding-top: 5px;">
+                            E2V1 Engine 2026 • UTC
+                        </div>
+                    </div>
+                `)
+                .openOn(map);
+        });
+
+        setInterval(updateShadows, 10000);
+        updateShadows();
+    </script>
+</body>
+</html>
