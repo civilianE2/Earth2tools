@@ -4,7 +4,7 @@
     <title>E2V1 Daytime & Moon Visualizer by Civilian</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        #map { height: 100vh; width: 100%; background: #00050a; cursor: crosshair; }
+        #map { height: 100vh; width: 100%; background: #aad3df; cursor: crosshair; }
         body { margin: 0; background: #111; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         .info { position: absolute; top: 10px; left: 50px; z-index: 1000; background: rgba(0,0,0,0.85); padding: 15px; border-radius: 8px; border: 1px solid #00d4ff; pointer-events: none; }
         .leaflet-popup-content-wrapper { background: transparent; box-shadow: none; padding: 0; }
@@ -27,8 +27,9 @@
             worldCopyJump: false
         }).setView([60, 24], 4);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            noWrap: true
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            noWrap: true,
+            attribution: '©OpenStreetMap, ©CartoDB'
         }).addTo(map);
 
         const shadowGroup = L.layerGroup().addTo(map);
@@ -75,9 +76,9 @@
             const decl = getSolarDeclination();
             const now = new Date();
             const drawLayer = (limit, color, opacity) => {
-                for (let lon = -180; lon < 180; lon += 2) {
+                for (let lon = -180; lon < 180; lon += 2.5) {
                     let points = [];
-                    for (let lat = 85; lat >= -85; lat -= 4) {
+                    for (let lat = 85; lat >= -85; lat -= 5) {
                         const latRad = lat * Math.PI / 180;
                         const utcSecs = (now.getUTCHours() * 3600) + (now.getUTCMinutes() * 60) + now.getUTCSeconds();
                         const hourAngle = (((((utcSecs + (lon/15)*3600)*4)%86400)/86400)*360-180)*Math.PI/180;
@@ -85,18 +86,28 @@
                         if (alt < limit) points.push([lat, lon]);
                     }
                     if (points.length > 0) {
-                        L.polygon(points.concat(points.map(p => [p[0], p[1] + 2]).reverse()), { fillColor: color, fillOpacity: opacity, stroke: false, interactive: false }).addTo(shadowGroup);
+                        L.polygon(points.concat(points.map(p => [p[0], p[1] + 2.5]).reverse()), { fillColor: color, fillOpacity: opacity, stroke: false, interactive: false }).addTo(shadowGroup);
                     }
                 }
             }
-            drawLayer(0, '#000', 0.25);
-            drawLayer(-12, '#000', 0.40);
+            drawLayer(0, '#000', 0.35);
+            drawLayer(-12, '#000', 0.50);
         }
 
         map.on('click', function(e) {
             const { lat, lng } = e.latlng;
             const sun = calculateSunTimes(lat, lng);
             const zoneOffset = Math.floor((lng + 7.5) / 15);
+            
+            // KORJAUS: Lisätty autoPan: false ja offset, jotta popup ei heiluta ruutua
+            const popup = L.popup({ 
+                minWidth: 250, 
+                autoPan: false, 
+                offset: [0, -10] 
+            })
+            .setLatLng(e.latlng)
+            .openOn(map);
+
             const updatePopup = () => {
                 const now = new Date();
                 const moon = calculateMoonData(lat, lng, now);
@@ -104,6 +115,7 @@
                 const h = Math.floor(e2v1Total/3600).toString().padStart(2,'0');
                 const m = Math.floor((e2v1Total%3600)/60).toString().padStart(2,'0');
                 const s = Math.floor(e2v1Total%60).toString().padStart(2,'0');
+                
                 popup.setContent(`
                     <div style="background: #1a1a1a; color: white; padding: 15px; font-family: sans-serif; border-radius: 8px; border: 1px solid #333; min-width: 220px;">
                         <h2 style="margin: 0 0 5px 0; color: #00d4ff; font-size: 14px; text-transform: uppercase;">Zone UTC${zoneOffset >= 0 ? '+' : ''}${zoneOffset}</h2>
@@ -123,7 +135,7 @@
                     </div>
                 `);
             };
-            const popup = L.popup({ minWidth: 250 }).setLatLng(e.latlng).openOn(map);
+
             const timer = setInterval(updatePopup, 250);
             map.on('popupclose', () => clearInterval(timer));
             updatePopup();
